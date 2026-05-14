@@ -99,6 +99,7 @@ pbjson = { workspace = true }
 [build-dependencies]
 prost = { workspace = true }
 prost-types = "0.14"
+protoc-bin-vendored = { workspace = true }
 tonic-prost-build = { workspace = true }
 pbjson-build = { workspace = true }
 

@@ -155,6 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_with_config(
             {
                 let mut c = Config::new();
+                c.protoc_executable(protoc_bin_vendored::protoc_bin_path()?);
                 c.enable_type_names();
                 c
             },
