@@ -18,6 +18,7 @@ use temporalio_client::{
 };
 
 use temporalio_common::{
+    ActivityDefinition,
     error::{ApplicationFailure, IncomingError},
     protos::{
         coresdk::{
@@ -96,6 +97,38 @@ impl MultiArgActivityWorkflow {
     }
 }
 
+struct FnActivity;
+
+impl ActivityDefinition for FnActivity {
+    type Input = String;
+    type Output = String;
+
+    fn name() -> &'static str
+    where
+        Self: Sized,
+    {
+        "fn_activity"
+    }
+}
+
+#[workflow]
+#[derive(Default)]
+struct RegisterActivityFnWorkflow;
+
+#[workflow_methods]
+impl RegisterActivityFnWorkflow {
+    #[run]
+    async fn run(ctx: &mut WorkflowContext<Self>, input: String) -> WorkflowResult<String> {
+        ctx.start_activity(
+            FnActivity,
+            input,
+            ActivityOptions::start_to_close_timeout(Duration::from_secs(5)),
+        )
+        .await
+        .map_err(Into::into)
+    }
+}
+
 #[tokio::test]
 async fn multi_arg_activity() {
     let wf_name = MultiArgActivityWorkflow::name();
@@ -119,6 +152,34 @@ async fn multi_arg_activity() {
     worker.run_until_done().await.unwrap();
     let r = handle.get_result(Default::default()).await.unwrap();
     assert_eq!(r, "hello world");
+}
+
+#[tokio::test]
+async fn register_activity_fn_executes_typed_callback() {
+    let wf_name = RegisterActivityFnWorkflow::name();
+    let mut starter = CoreWfStarter::new(wf_name);
+    starter
+        .sdk_config
+        .register_activity_fn::<FnActivity, _, _>(|ctx, input| async move {
+            Ok(format!("{}:{input}", ctx.info().activity_type))
+        });
+    starter
+        .sdk_config
+        .register_workflow::<RegisterActivityFnWorkflow>();
+    let mut worker = starter.worker().await;
+
+    let task_queue = starter.get_task_queue().to_owned();
+    let handle = worker
+        .submit_workflow(
+            RegisterActivityFnWorkflow::run,
+            "hello".to_string(),
+            WorkflowStartOptions::new(task_queue, wf_name.to_owned()).build(),
+        )
+        .await
+        .unwrap();
+    worker.run_until_done().await.unwrap();
+    let result = handle.get_result(Default::default()).await.unwrap();
+    assert_eq!(result, format!("{}:hello", FnActivity::name()));
 }
 
 #[tokio::test]

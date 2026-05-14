@@ -300,6 +300,18 @@ impl<S: worker_options_builder::State> WorkerOptionsBuilder<S> {
         self
     }
 
+    /// Registers a typed activity function.
+    pub fn register_activity_fn<AD, F, Fut>(mut self, handler: F) -> Self
+    where
+        AD: ActivityDefinition,
+        AD::Output: Send + Sync,
+        F: Fn(ActivityContext, AD::Input) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<AD::Output, ActivityError>> + Send + 'static,
+    {
+        self.activities.register_activity_fn::<AD, F, Fut>(handler);
+        self
+    }
+
     /// Registers all workflows on a workflow implementer.
     pub fn register_workflow<WI: WorkflowImplementer>(mut self) -> Self {
         self.workflows.register_workflow::<WI>();
@@ -355,6 +367,19 @@ impl WorkerOptions {
         self.activities.register_activity::<AD>(instance);
         self
     }
+
+    /// Registers a typed activity function.
+    pub fn register_activity_fn<AD, F, Fut>(&mut self, handler: F) -> &mut Self
+    where
+        AD: ActivityDefinition,
+        AD::Output: Send + Sync,
+        F: Fn(ActivityContext, AD::Input) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<AD::Output, ActivityError>> + Send + 'static,
+    {
+        self.activities.register_activity_fn::<AD, F, Fut>(handler);
+        self
+    }
+
     /// Returns all the registered activities by cloning the current set.
     pub fn activities(&self) -> ActivityDefinitions {
         self.activities.clone()
@@ -564,6 +589,20 @@ impl Worker {
         self.activity_half
             .activities
             .register_activity::<AD>(instance);
+        self
+    }
+
+    /// Registers a typed activity function.
+    pub fn register_activity_fn<AD, F, Fut>(&mut self, handler: F) -> &mut Self
+    where
+        AD: ActivityDefinition,
+        AD::Output: Send + Sync,
+        F: Fn(ActivityContext, AD::Input) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<AD::Output, ActivityError>> + Send + 'static,
+    {
+        self.activity_half
+            .activities
+            .register_activity_fn::<AD, F, Fut>(handler);
         self
     }
 
@@ -1394,6 +1433,40 @@ mod tests {
     fn test_activity_registration() {
         let act_instance = MyActivities {};
         let _ = WorkerOptions::new("task_q").register_activities(act_instance);
+    }
+
+    struct FnActivity;
+
+    impl ActivityDefinition for FnActivity {
+        type Input = String;
+        type Output = String;
+
+        fn name() -> &'static str
+        where
+            Self: Sized,
+        {
+            "fn_activity"
+        }
+    }
+
+    #[test]
+    fn test_activity_fn_registration() {
+        let _ = WorkerOptions::new("task_q")
+            .register_activity_fn::<FnActivity, _, _>(|_ctx, input| async move { Ok(input) });
+
+        let _ = WorkerOptions::new("task_q")
+            .build()
+            .register_activity_fn::<FnActivity, _, _>(|_ctx, input| async move { Ok(input) });
+
+        let _ = ActivityDefinitions::default()
+            .register_activity_fn::<FnActivity, _, _>(|_ctx, input| async move { Ok(input) });
+    }
+
+    // Compile-only test for late worker registration.
+    #[allow(unused, clippy::diverging_sub_expression)]
+    fn test_activity_fn_registration_on_worker() {
+        let mut worker: Worker = unimplemented!();
+        worker.register_activity_fn::<FnActivity, _, _>(|_ctx, input| async move { Ok(input) });
     }
 
     // Compile-only test for workflow context invocation

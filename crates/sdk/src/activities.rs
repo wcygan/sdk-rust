@@ -52,6 +52,7 @@ use prost_types::{Duration, Timestamp};
 use std::{
     collections::HashMap,
     fmt::Debug,
+    future::Future,
     sync::Arc,
     time::{Duration as StdDuration, SystemTime},
 };
@@ -386,10 +387,25 @@ impl ActivityDefinitions {
         AD: ActivityDefinition + ExecutableActivity,
         AD::Output: Send + Sync,
     {
+        self.register_activity_fn::<AD, _, _>(move |ctx, input| {
+            let instance = instance.clone();
+            AD::execute(Some(instance), ctx, input)
+        })
+    }
+
+    /// Registers a typed activity function.
+    pub fn register_activity_fn<AD, F, Fut>(&mut self, handler: F) -> &mut Self
+    where
+        AD: ActivityDefinition,
+        AD::Output: Send + Sync,
+        F: Fn(ActivityContext, AD::Input) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<AD::Output, ActivityError>> + Send + 'static,
+    {
+        let handler = Arc::new(handler);
         self.activities.insert(
             AD::name(),
             Arc::new(move |payloads, dc, c| {
-                let instance = instance.clone();
+                let handler = handler.clone();
                 let dc = dc.clone();
                 async move {
                     // Use PayloadConverter (not DataConverter) since the codec is applied
@@ -402,7 +418,7 @@ impl ActivityDefinitions {
                     let deserialized: AD::Input = pc
                         .from_payloads(&ctx, payloads)
                         .map_err(ActivityError::from)?;
-                    let result = AD::execute(Some(instance), c, deserialized).await?;
+                    let result = handler(c, deserialized).await?;
                     pc.to_payload(&ctx, &result).map_err(ActivityError::from)
                 }
                 .boxed()
