@@ -160,6 +160,32 @@ async fn register_activity_fn_executes_typed_callback() {
     let mut starter = CoreWfStarter::new(wf_name);
     starter
         .sdk_config
+        .register_workflow::<RegisterActivityFnWorkflow>();
+    let mut worker = starter.worker().await;
+    worker.register_activity_fn::<FnActivity, _, _>(|ctx, input| async move {
+        Ok(format!("{}:{input}", ctx.info().activity_type))
+    });
+
+    let task_queue = starter.get_task_queue().to_owned();
+    let handle = worker
+        .submit_workflow(
+            RegisterActivityFnWorkflow::run,
+            "hello".to_string(),
+            WorkflowStartOptions::new(task_queue, format!("{wf_name}-worker")).build(),
+        )
+        .await
+        .unwrap();
+    worker.run_until_done().await.unwrap();
+    let result = handle.get_result(Default::default()).await.unwrap();
+    assert_eq!(result, format!("{}:hello", FnActivity::name()));
+}
+
+#[tokio::test]
+async fn register_activity_fn_executes_typed_callback_from_worker_options() {
+    let wf_name = RegisterActivityFnWorkflow::name();
+    let mut starter = CoreWfStarter::new(wf_name);
+    starter
+        .sdk_config
         .register_activity_fn::<FnActivity, _, _>(|ctx, input| async move {
             Ok(format!("{}:{input}", ctx.info().activity_type))
         });
@@ -172,14 +198,14 @@ async fn register_activity_fn_executes_typed_callback() {
     let handle = worker
         .submit_workflow(
             RegisterActivityFnWorkflow::run,
-            "hello".to_string(),
-            WorkflowStartOptions::new(task_queue, wf_name.to_owned()).build(),
+            "options".to_string(),
+            WorkflowStartOptions::new(task_queue, format!("{wf_name}-options")).build(),
         )
         .await
         .unwrap();
     worker.run_until_done().await.unwrap();
     let result = handle.get_result(Default::default()).await.unwrap();
-    assert_eq!(result, format!("{}:hello", FnActivity::name()));
+    assert_eq!(result, format!("{}:options", FnActivity::name()));
 }
 
 #[tokio::test]

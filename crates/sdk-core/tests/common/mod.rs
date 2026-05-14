@@ -36,7 +36,7 @@ use temporalio_client::{
     grpc::WorkflowService,
 };
 use temporalio_common::{
-    HasWorkflowDefinition, WorkflowDefinition,
+    ActivityDefinition, HasWorkflowDefinition, WorkflowDefinition,
     data_converters::{DataConverter, RawValue},
     protos::{
         coresdk::{
@@ -55,7 +55,7 @@ use temporalio_common::{
 };
 use temporalio_sdk::{
     Worker, WorkerOptions,
-    activities::ActivityImplementer,
+    activities::{ActivityContext, ActivityError, ActivityImplementer},
     interceptors::{
         FailOnNondeterminismInterceptor, InterceptorWithNext, ReturnWorkflowExitValueInterceptor,
         WorkerInterceptor,
@@ -533,6 +533,17 @@ impl TestWorker {
         instance: AI,
     ) -> &mut Self {
         self.inner.register_activities::<AI>(instance);
+        self
+    }
+
+    pub(crate) fn register_activity_fn<AD, F, Fut>(&mut self, handler: F) -> &mut Self
+    where
+        AD: ActivityDefinition,
+        AD::Output: Send + Sync,
+        F: Fn(ActivityContext, AD::Input) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<AD::Output, ActivityError>> + Send + 'static,
+    {
+        self.inner.register_activity_fn::<AD, F, Fut>(handler);
         self
     }
 
