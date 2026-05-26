@@ -11,7 +11,8 @@ use temporalio_common::{
         coresdk::{
             AsJsonPayloadExt,
             child_workflow::{
-                ChildWorkflowCancellationType, StartChildWorkflowExecutionFailedCause,
+                ChildWorkflowCancellationType, ParentClosePolicy,
+                StartChildWorkflowExecutionFailedCause,
             },
             workflow_activation::{WorkflowActivationJob, workflow_activation_job},
             workflow_commands::{
@@ -21,7 +22,7 @@ use temporalio_common::{
             workflow_completion::WorkflowActivationCompletion,
         },
         temporal::api::{
-            enums::v1::{CommandType, EventType, ParentClosePolicy, WorkflowTaskFailedCause},
+            enums::v1::{CommandType, EventType, WorkflowTaskFailedCause},
             history::v1::{
                 StartChildWorkflowExecutionFailedEventAttributes,
                 StartChildWorkflowExecutionInitiatedEventAttributes, history_event,
@@ -104,8 +105,8 @@ async fn child_workflow_happy_path() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<HappyParent>();
-    worker.register_workflow::<ChildWf>();
+    worker.register_workflow::<HappyParent>().unwrap();
+    worker.register_workflow::<ChildWf>().unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -172,10 +173,14 @@ async fn abandoned_child_bug_repro() {
 
     let barr = Arc::new(Barrier::new(2));
     let barr_clone = barr.clone();
-    worker.register_workflow_with_factory(move || AbandonedChildBugReproParent {
-        barr: barr_clone.clone(),
-    });
-    worker.register_workflow::<AbandonedChildBugReproChild>();
+    worker
+        .register_workflow_with_factory(move || AbandonedChildBugReproParent {
+            barr: barr_clone.clone(),
+        })
+        .unwrap();
+    worker
+        .register_workflow::<AbandonedChildBugReproChild>()
+        .unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -258,10 +263,14 @@ async fn abandoned_child_resolves_post_cancel() {
 
     let barr = Arc::new(Barrier::new(2));
     let barr_clone = barr.clone();
-    worker.register_workflow_with_factory(move || AbandonedChildResolvesPostCancelParent {
-        barr: barr_clone.clone(),
-    });
-    worker.register_workflow::<AbandonedChildResolvesPostCancelChild>();
+    worker
+        .register_workflow_with_factory(move || AbandonedChildResolvesPostCancelParent {
+            barr: barr_clone.clone(),
+        })
+        .unwrap();
+    worker
+        .register_workflow::<AbandonedChildResolvesPostCancelChild>()
+        .unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     let handle = worker
@@ -356,8 +365,12 @@ async fn cancelled_child_gets_reason() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<CancelledChildGetsReasonParent>();
-    worker.register_workflow::<CancelledChildGetsReasonChild>();
+    worker
+        .register_workflow::<CancelledChildGetsReasonParent>()
+        .unwrap();
+    worker
+        .register_workflow::<CancelledChildGetsReasonChild>()
+        .unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -442,7 +455,9 @@ async fn signal_child_workflow(#[case] serial: bool) {
         mock,
     ));
 
-    worker.register_workflow_with_factory(move || SignalChildWorkflowWf { serial });
+    worker
+        .register_workflow_with_factory(move || SignalChildWorkflowWf { serial })
+        .unwrap();
     let task_queue = worker.inner_mut().task_queue().to_owned();
     worker
         .submit_wf(
@@ -495,7 +510,7 @@ impl ParentCancelsChildWf {
 async fn cancel_child_workflow() {
     let t = canned_histories::single_child_workflow_cancelled("child-id-1");
     let mut worker = build_fake_sdk(MockPollCfg::from_resps(t, [ResponseType::AllHistory]));
-    worker.register_workflow::<ParentCancelsChildWf>();
+    worker.register_workflow::<ParentCancelsChildWf>().unwrap();
     worker.run().await.unwrap();
 }
 
@@ -542,8 +557,10 @@ async fn cancel_child_workflow_runtime_shape() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<RuntimeParentCancelsChildWf>();
-    worker.register_workflow::<GrandchildCancelled>();
+    worker
+        .register_workflow::<RuntimeParentCancelsChildWf>()
+        .unwrap();
+    worker.register_workflow::<GrandchildCancelled>().unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -660,9 +677,13 @@ async fn child_workflow_cancellation_propigates() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<GrandchildCancellationWf>();
-    worker.register_workflow::<PropagatesChildCancellationWf>();
-    worker.register_workflow::<GrandchildCancelled>();
+    worker
+        .register_workflow::<GrandchildCancellationWf>()
+        .unwrap();
+    worker
+        .register_workflow::<PropagatesChildCancellationWf>()
+        .unwrap();
+    worker.register_workflow::<GrandchildCancelled>().unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -848,9 +869,11 @@ async fn pass_child_workflow_summary_to_metadata() {
 
     let mut worker = mock_sdk_cfg(mock_cfg, |_| {});
     let child_wf_id = wf_id.to_string();
-    worker.register_workflow_with_factory(move || PassChildWorkflowSummaryToMetadata {
-        child_wf_id: child_wf_id.clone(),
-    });
+    worker
+        .register_workflow_with_factory(move || PassChildWorkflowSummaryToMetadata {
+            child_wf_id: child_wf_id.clone(),
+        })
+        .unwrap();
     let task_queue = worker.inner_mut().task_queue().to_owned();
     worker
         .submit_wf(
@@ -970,7 +993,7 @@ async fn single_child_workflow_until_completion(mut mock_cfg: MockPollCfg) {
     });
 
     let mut worker = build_fake_sdk(mock_cfg);
-    worker.register_workflow::<ParentWf>();
+    worker.register_workflow::<ParentWf>().unwrap();
     worker.run().await.unwrap();
 }
 
@@ -1015,7 +1038,7 @@ async fn single_child_workflow_start_fail() {
     });
 
     let mut worker = build_fake_sdk(mock_cfg);
-    worker.register_workflow::<ParentWf>();
+    worker.register_workflow::<ParentWf>().unwrap();
     worker.run().await.unwrap();
 }
 
@@ -1063,7 +1086,7 @@ async fn single_child_workflow_cancel_before_sent() {
     });
 
     let mut worker = build_fake_sdk(mock_cfg);
-    worker.register_workflow::<CancelBeforeSendWf>();
+    worker.register_workflow::<CancelBeforeSendWf>().unwrap();
     worker.run().await.unwrap();
 }
 
@@ -1161,7 +1184,9 @@ impl CancelChildBeforeStartedCannedWf {
 async fn cancel_child_before_started_event_exposes_cancelled_error() {
     let t = canned_histories::cancel_child_workflow_before_started_event("child-id-1");
     let mut worker = build_fake_sdk(MockPollCfg::from_resps(t, [ResponseType::AllHistory]));
-    worker.register_workflow::<CancelChildBeforeStartedCannedWf>();
+    worker
+        .register_workflow::<CancelChildBeforeStartedCannedWf>()
+        .unwrap();
     worker.run().await.unwrap();
 }
 
@@ -1200,10 +1225,14 @@ async fn cancel_child_wf_before_started_event_real_server() {
 
     let barr = Arc::new(Notify::new());
     let barr_clone = barr.clone();
-    worker.register_workflow_with_factory(move || CancelChildBeforeStartedParent {
-        barr: barr_clone.clone(),
-    });
-    worker.register_workflow::<AbandonedChildBugReproChild>();
+    worker
+        .register_workflow_with_factory(move || CancelChildBeforeStartedParent {
+            barr: barr_clone.clone(),
+        })
+        .unwrap();
+    worker
+        .register_workflow::<AbandonedChildBugReproChild>()
+        .unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     let handle = worker
@@ -1286,8 +1315,8 @@ async fn untyped_child_workflow_happy_path() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<UntypedHappyParent>();
-    worker.register_workflow::<ChildWf>();
+    worker.register_workflow::<UntypedHappyParent>().unwrap();
+    worker.register_workflow::<ChildWf>().unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -1380,8 +1409,12 @@ async fn child_workflow_start_serialization_failure_returns_error() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<ChildStartSerializationFailParent>();
-    worker.register_workflow::<UnserializableStartInputChild>();
+    worker
+        .register_workflow::<ChildStartSerializationFailParent>()
+        .unwrap();
+    worker
+        .register_workflow::<UnserializableStartInputChild>()
+        .unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -1435,8 +1468,12 @@ async fn child_workflow_signal_serialization_failure_returns_error() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<ChildSignalSerializationFailParent>();
-    worker.register_workflow::<UnserializableSignalChild>();
+    worker
+        .register_workflow::<ChildSignalSerializationFailParent>()
+        .unwrap();
+    worker
+        .register_workflow::<UnserializableSignalChild>()
+        .unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
     worker
@@ -1493,7 +1530,7 @@ async fn child_workflow_unit_result_none_payload() {
     // single_child_workflow produces a completion with result: None
     let t = canned_histories::single_child_workflow("child-id-1");
     let mut worker = build_fake_sdk(MockPollCfg::from_resps(t, [ResponseType::AllHistory]));
-    worker.register_workflow::<UnitChildParentWf>();
+    worker.register_workflow::<UnitChildParentWf>().unwrap();
     worker.run().await.unwrap();
 }
 
@@ -1532,8 +1569,12 @@ async fn cancel_child_result_future_does_not_fail_wft() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<CancelResultFutureParent>();
-    worker.register_workflow::<CancelledChildGetsReasonChild>();
+    worker
+        .register_workflow::<CancelResultFutureParent>()
+        .unwrap();
+    worker
+        .register_workflow::<CancelledChildGetsReasonChild>()
+        .unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
 
@@ -1615,9 +1656,13 @@ async fn cancel_child_after_cancel_external_uses_correct_seq() {
     starter.sdk_config.task_types = WorkerTaskTypes::workflow_only();
     let mut worker = starter.worker().await;
 
-    worker.register_workflow::<CancelExternalThenChildParent>();
-    worker.register_workflow::<CancelledChildGetsReasonChild>();
-    worker.register_workflow::<CancelExternalTarget>();
+    worker
+        .register_workflow::<CancelExternalThenChildParent>()
+        .unwrap();
+    worker
+        .register_workflow::<CancelledChildGetsReasonChild>()
+        .unwrap();
+    worker.register_workflow::<CancelExternalTarget>().unwrap();
 
     let task_queue = starter.get_task_queue().to_owned();
 
