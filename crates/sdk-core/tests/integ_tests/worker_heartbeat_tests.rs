@@ -71,6 +71,7 @@ fn to_system_time(ts: Timestamp) -> SystemTime {
     UNIX_EPOCH + Duration::new(ts.seconds as u64, ts.nanos as u32)
 }
 
+#[allow(deprecated)]
 async fn list_worker_heartbeats(client: &Client, query: impl Into<String>) -> Vec<WorkerHeartbeat> {
     let mut raw_client = client.clone();
     let response = WorkflowService::list_workers(
@@ -80,6 +81,7 @@ async fn list_worker_heartbeats(client: &Client, query: impl Into<String>) -> Ve
             page_size: 200,
             next_page_token: Vec::new(),
             query: query.into(),
+            include_system_workers: false,
         }
         .into_request(),
     )
@@ -231,6 +233,7 @@ async fn docker_worker_heartbeat_basic(#[values("otel", "prom", "no_metrics")] b
                 page_size: 100,
                 next_page_token: Vec::new(),
                 query: String::new(),
+                include_system_workers: false,
             }
             .into_request(),
         )
@@ -271,6 +274,7 @@ async fn docker_worker_heartbeat_basic(#[values("otel", "prom", "no_metrics")] b
                             page_size: 100,
                             next_page_token: Vec::new(),
                             query: String::new(),
+                            include_system_workers: false,
                         }
                         .into_request(),
                     )
@@ -398,6 +402,7 @@ async fn docker_worker_heartbeat_tuner() {
             page_size: 100,
             next_page_token: Vec::new(),
             query: String::new(),
+            include_system_workers: false,
         }
         .into_request(),
     )
@@ -974,6 +979,7 @@ async fn worker_heartbeat_failure_metrics() {
         eventually(
             || async {
                 let heartbeats = list_worker_heartbeats(&client, query.clone()).await;
+                #[allow(deprecated)]
                 let heartbeat = heartbeats
                     .into_iter()
                     .find(|hb| hb.worker_instance_key == worker_key)
@@ -1065,6 +1071,7 @@ async fn worker_heartbeat_no_runtime_heartbeat() {
             page_size: 100,
             next_page_token: Vec::new(),
             query: String::new(),
+            include_system_workers: false,
         }
         .into_request(),
     )
@@ -1137,6 +1144,7 @@ async fn worker_heartbeat_skip_client_worker_set_check() {
             page_size: 100,
             next_page_token: Vec::new(),
             query: String::new(),
+            include_system_workers: false,
         }
         .into_request(),
     )

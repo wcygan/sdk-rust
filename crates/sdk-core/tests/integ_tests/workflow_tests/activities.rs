@@ -1,7 +1,10 @@
-use crate::common::{
-    ActivationAssertionsInterceptor, CoreWfStarter, INTEG_CLIENT_IDENTITY,
-    activity_functions::StdActivities, build_fake_sdk, eventually, init_core_and_create_wf,
-    mock_sdk, mock_sdk_cfg,
+use crate::{
+    common::{
+        ActivationAssertionsInterceptor, CoreWfStarter, INTEG_CLIENT_IDENTITY,
+        activity_functions::StdActivities, build_fake_sdk, eventually, init_core_and_create_wf,
+        mock_sdk, mock_sdk_cfg,
+    },
+    shared_tests,
 };
 use anyhow::anyhow;
 use assert_matches::assert_matches;
@@ -2203,4 +2206,11 @@ async fn immediate_activity_cancelation() {
 
     worker.set_worker_interceptor(aai);
     worker.run().await.unwrap();
+}
+
+/// Verifies that activity cancellation is delivered via the nexus worker command channel
+/// even when the activity does not heartbeat.
+#[tokio::test]
+async fn activity_cancel_delivered_without_heartbeat() {
+    shared_tests::activity_cancel_delivered_without_heartbeat().await
 }
